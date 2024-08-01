@@ -9,6 +9,8 @@ import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.Manifest;
@@ -16,6 +18,8 @@ import android.content.pm.PackageManager;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.os.Environment;
+import android.widget.Toast;
+
 import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
@@ -29,7 +33,7 @@ public class MainActivity extends AppCompatActivity {
     public native void initSurface(Surface surface);
     public native void deinitSurface();
     public native void surfaceResize();
-    public native int loadTextureFromFile(String picturesDir);
+    public native void loadTextureFromFile(Surface surface, String picturesDir);
 
     private static final String TAG = "MainActivity";
     private ImageView myImageView;
@@ -41,18 +45,32 @@ public class MainActivity extends AppCompatActivity {
 
         myImageView = findViewById(R.id.myImageView);
 
-        // Kiểm tra và yêu cầu quyền truy cập vào bộ nhớ ngoài nếu cần
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+        Button myButton = findViewById(R.id.myButton);
+        myButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // Xử lý khi button được nhấp
 
-            // Yêu cầu quyền
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                    PERMISSION_REQUEST_CODE);
-        } else {
-            // Quyền đã được cấp, bạn có thể truy cập vào bộ nhớ ngoài
-            accessExternalStorage();
-        }
+                // Lấy đường dẫn đến thư mục ảnh công cộng
+                File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                picturesDir = new File(picturesDir, "1045-2.jpg");
+                if (picturesDir != null) {
+                    Log.d("MainActivity", "Pictures Directory: " + picturesDir.getAbsolutePath());
+                    SurfaceView surfaceView = findViewById(R.id.surfaceView);
+                    Surface surface = surfaceView.getHolder().getSurface();
+                    loadTextureFromFile(surface, picturesDir.getAbsolutePath());
+                }
+                Toast.makeText(MainActivity.this, "dcmm!", Toast.LENGTH_SHORT).show();
+
+            }
+        });
+
+        // Yêu cầu quyền
+        ActivityCompat.requestPermissions(this,
+                new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.READ_MEDIA_IMAGES},
+                PERMISSION_REQUEST_CODE);
+        // Quyền đã được cấp, bạn có thể truy cập vào bộ nhớ ngoài
+        accessExternalStorage();
     }
 
     @Override
@@ -68,35 +86,27 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // Lấy đường dẫn đến thư mục ảnh công cộng
-        File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        picturesDir = new File(picturesDir, "1045-2.jpg");
-        if (picturesDir != null) {
-            Log.d("MainActivity", "Pictures Directory: " + picturesDir.getAbsolutePath());
-            int textureId = loadTextureFromFile(picturesDir.getAbsolutePath());
-        }
-
         // Sử dụng phương thức JNI
         TextView textView = findViewById(R.id.textView);
         textView.setText(stringFromJNI());
 
-        SurfaceView surfaceView = findViewById(R.id.surfaceView);
-        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
-            @Override
-            public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-                initSurface(surfaceHolder.getSurface());
-            }
-
-            @Override
-            public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
-                surfaceResize();
-            }
-
-            @Override
-            public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
-                deinitSurface();
-            }
-        });
+//        SurfaceView surfaceView = findViewById(R.id.surfaceView);
+//        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
+//            @Override
+//            public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
+//                initSurface(surfaceHolder.getSurface());
+//            }
+//
+//            @Override
+//            public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
+//                surfaceResize();
+//            }
+//
+//            @Override
+//            public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
+//                deinitSurface();
+//            }
+//        });
     };
 
     private void accessExternalStorage() {
@@ -105,19 +115,11 @@ public class MainActivity extends AppCompatActivity {
         picturesDir = new File(picturesDir, "1045-2.jpg");
         if (picturesDir != null) {
             Log.d("MainActivity", "Pictures Directory: " + picturesDir.getAbsolutePath());
-            int textureId = loadTextureFromFile(picturesDir.getAbsolutePath());
+//            int textureId = loadTextureFromFile(picturesDir.getAbsolutePath());
+//            loadImageFromUri();
         }
-    };
+    }
     private void loadImageFromUri() {
-        // Đường dẫn tệp hình ảnh trong bộ nhớ ngoài
-        File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        File imageFile = new File(picturesDir, "1045-2.jpg");
-
-        if (imageFile.exists()) {
-            Uri imageUri = Uri.fromFile(imageFile);
-            myImageView.setImageURI(imageUri);
-        } else {
-            Log.e(TAG, "File does not exist: " + imageFile.getAbsolutePath());
-        }
+        myImageView.setVisibility(View.GONE);
     }
 }

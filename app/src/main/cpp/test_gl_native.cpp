@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <string>
+#include <iostream>
 #include <GLES3/gl3.h>
 #include "gl_helper.h"
 #include <android/native_window.h>
@@ -13,7 +14,6 @@
 #include <android/log.h>
 #define LOG_TAG "Native"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-
 
 ANativeWindow* window = nullptr;
 EGLContext context;
@@ -59,25 +59,147 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
         GLHelper_releaseContext(context);
     });
 }
+//
+//extern "C" JNIEXPORT void JNICALL
+//Java_com_vinai_testglkotlin_MainActivity_surfaceResize(JNIEnv *env, jobject instance) {
+//    std::lock_guard<std::mutex> lk(mMutex);
+//    triggerUpdateSize = true;
+//}
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_vinai_testglkotlin_MainActivity_surfaceResize(JNIEnv *env, jobject instance) {
-    std::lock_guard<std::mutex> lk(mMutex);
-    triggerUpdateSize = true;
+//extern "C" JNIEXPORT void JNICALL
+//Java_com_vinai_testglkotlin_MainActivity_deinitSurface(JNIEnv *env, jobject instance) {
+//    running = false;
+//    renderThread.join();
+//    ANativeWindow_release(window);
+//}
+
+// Vertex shader source code
+const char* vertexShaderSource = R"(
+#version 310 es
+precision mediump float;
+layout(location = 0) in vec4 vPosition;
+layout(location = 1) in vec2 vTexCoord;
+out vec2 texCoord;
+void main() {
+    gl_Position = vPosition;
+    texCoord = vTexCoord;
+}
+)";
+
+// Fragment shader source code
+const char* fragmentShaderSource = R"(
+#version 310 es
+precision mediump float;
+in vec2 texCoord;
+out vec4 fragColor;
+uniform sampler2D textureSampler;
+void main() {
+    fragColor = texture(textureSampler, texCoord);
+}
+)";
+
+// Compile shader and check for errors
+GLuint CompileShader(GLenum type, const char* source) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, nullptr);
+    glCompileShader(shader);
+
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+        LOGE("Shader compilation error: %s", infoLog);
+    }
+
+    return shader;
+}
+
+// Create and link shader program
+GLuint CreateShaderProgram() {
+    GLuint vertexShader = CompileShader(GL_VERTEX_SHADER, vertexShaderSource);
+    GLuint fragmentShader = CompileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
+
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+
+    GLint success;
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
+        LOGE("Program linking error: %s", infoLog);
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    return shaderProgram;
+}
+
+const GLfloat vertices[] = {
+        // Positions        // Texture Coords
+        -1.0f,  1.0f,      0.0f, 1.0f,
+        -1.0f, -1.0f,      0.0f, 0.0f,
+        1.0f, -1.0f,      1.0f, 0.0f,
+        1.0f,  1.0f,      1.0f, 1.0f
+};
+
+const GLuint indices[] = {
+        0, 1, 2,
+        0, 2, 3
+};
+
+GLuint VBO, VAO, EBO;
+
+void SetupBuffers() {
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
+    glBindVertexArray(VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (GLvoid*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (GLvoid*)(2 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+}
+
+void Render(GLuint shaderProgram, GLuint texture) {
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(shaderProgram);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // Vẽ hình chữ nhật
+    glBindVertexArray(0);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_vinai_testglkotlin_MainActivity_deinitSurface(JNIEnv *env, jobject instance) {
-    running = false;
-    renderThread.join();
-    ANativeWindow_release(window);
-}
+Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobject thiz, jobject _surface, jstring picturesDir) {
 
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobject thiz, jstring picturesDir) {
     // Chuyển đổi jstring thành chuỗi C
     const char* path = env->GetStringUTFChars(picturesDir, nullptr);
+    window = ANativeWindow_fromSurface(env, _surface);
+
+    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    GLHelper_initGL(EGL_NO_CONTEXT, window, &context, &surface);
+    eglMakeCurrent(display, surface, surface, context);
+    int surfaceWidth = 0;
+    int surfaceHeight = 0;
+    GLHelper_getSurfaceSize(surface, surfaceWidth, surfaceHeight);
 
     // Tải hình ảnh bằng stb_image
     int width, height, nrChannels;
@@ -85,8 +207,11 @@ Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobjec
     if (data == nullptr) {
         LOGE("Failed to load image: %s", path);
         env->ReleaseStringUTFChars(picturesDir, path);
-        return 0;
+        return;
     }
+
+    glClearColor(0, 0, 1, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Tạo texture OpenGL
     GLuint textureID;
@@ -99,15 +224,49 @@ Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobjec
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    // Tải dữ liệu hình ảnh vào texture
-    GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+//    // Tải dữ liệu hình ảnh vào texture
+//    GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
+//    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+//
+//    GLuint readFramebuffer = 0;
+//    glGenFramebuffers(1, &readFramebuffer);
+//
+//    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+//    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
+//    glBlitFramebuffer(0, 0, width, height, (surfaceWidth - width) / 2, (surfaceHeight - height) / 2, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+
+
+    // Create and bind texture
+    unsigned int texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    // Set texture wrapping/filtering options
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+
+    stbi_image_free(data);
+    env->ReleaseStringUTFChars(picturesDir, path);
+
+    // Clean up resources
+    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &EBO);
+
+    eglSwapBuffers(display, surface);
+
+    // Giải phóng OpenGL
+    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    GLHelper_releaseSurface(surface);
+    GLHelper_releaseContext(context);
 
     // Giải phóng dữ liệu hình ảnh sau khi tải vào texture
     stbi_image_free(data);
     env->ReleaseStringUTFChars(picturesDir, path);
-
-    return textureID;
 }
 
 
