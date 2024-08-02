@@ -24,10 +24,24 @@
         android:padding="8dp"
         android:text="Hello World!" />
 
+    <Button
+        android:id="@+id/myButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="140dp"
+        android:onClick="onButtonClick"
+        android:text="Click Me"
+        app:layout_constraintStart_toEndOf="@+id/textView"
+        tools:ignore="MissingConstraints"
+        tools:layout_editor_absoluteY="81dp" />
+
     <ImageView
         android:id="@+id/myImageView"
+        android:visibility="gone"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:srcCompat="@drawable/ic_launcher_background" />
+        app:srcCompat="@drawable/ic_launcher_background"
+        tools:layout_editor_absoluteX="-10dp"
+        tools:layout_editor_absoluteY="-10dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
