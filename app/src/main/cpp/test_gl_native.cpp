@@ -31,9 +31,12 @@ std::thread renderThread;
 bool triggerUpdateSize = true;
 std::mutex mMutex;
 
+GLuint textureID = 0;
 GLuint CreateShaderProgram();
 void SetupBuffers();
 void DrawRectangle(GLuint shaderProgram);
+void loadTextureFromFile(const char* picturesDir);
+void renderLoop();
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_vinai_testglkotlin_MainActivity_stringFromJNI(JNIEnv *env, jobject instance) {
@@ -41,11 +44,12 @@ Java_com_vinai_testglkotlin_MainActivity_stringFromJNI(JNIEnv *env, jobject inst
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface) {
+Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface, jstring picturesDir) {
     LOGI("Java_com_vinai_testglkotlin_MainActivity_initSurface");
     window = ANativeWindow_fromSurface(env, j_surface);
     running = true;
-    renderThread = std::thread([]{
+    const char* path = env->GetStringUTFChars(picturesDir, nullptr);
+    renderThread = std::thread([path]{
         LOGI("Start render thread");
         display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if(!GLHelper_initGL(EGL_NO_CONTEXT, window, &context, &surface)) {
@@ -60,6 +64,7 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
 
         // Thiết lập buffers và VAO
         SetupBuffers();
+        loadTextureFromFile(path);
         while (running) {
             bool willUpdateSize = false;
             {
@@ -72,6 +77,13 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
                 resize_gl(width, height);
             }
 //            render_gl(width, height);
+            if (textureID == 0)
+            {
+//                LOGD("texture not loaded yet. skip");
+                continue;
+            } else {
+//                LOGD("Drawing");
+            }
             DrawRectangle(shaderProgram);
             eglSwapBuffers(display, surface);
 
@@ -102,12 +114,11 @@ const char* vertexShaderSource = R"(
 #version 310 es
 precision mediump float;
 layout(location = 0) in vec3 vPosition;
-layout(location = 1) in vec3 color;
+layout(location = 1) in vec2 vTexCoord;
 out vec2 texCoord;
-out vec3 _color;
 void main() {
     gl_Position = vec4(vPosition, 1.0);
-    _color = color;
+    texCoord = vTexCoord;
 }
 )";
 
@@ -116,11 +127,10 @@ const char* fragmentShaderSource = R"(
 #version 310 es
 precision mediump float;
 in vec2 texCoord;
-in vec3 _color;
-out vec3 fragColor;
+out vec4 fragColor;
 uniform sampler2D textureSampler;
 void main() {
-    fragColor = _color;
+    fragColor = texture(textureSampler, texCoord);
 }
 )";
 
@@ -198,12 +208,13 @@ void SetupBuffers() {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
     glEnableVertexAttribArray(0);
 
-    // color
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-    glEnableVertexAttribArray(1);
+//    // color
+//    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+//    glEnableVertexAttribArray(1);
 
-//    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(2 * sizeof(GLfloat)));
-//    glEnableVertexAttribArray(2);
+    //Texture coordinate
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
 }
@@ -218,74 +229,70 @@ void DrawRectangle(GLuint shaderProgram) {
     glBindVertexArray(0);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_vinai_testglkotlin_MainActivity_drawRectangle(JNIEnv *env, jobject thiz) {
-    // Vẽ hình chữ nhật
-    DrawRectangle(shaderProgram);
-
-    eglSwapBuffers(display, surface);
-}
-//extern "C" JNIEXPORT void JNICALL
-//Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobject thiz, jobject _surface, jstring picturesDir) {
-//
+void loadTextureFromFile(const char* picturesDir) {
+    LOGD("display=%d, surface=%d, context=%d", display, surface, context);
 //    // Chuyển đổi jstring thành chuỗi C
-//    const char* path = env->GetStringUTFChars(picturesDir, nullptr);
 //    window = ANativeWindow_fromSurface(env, _surface);
 //
 //    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 //    GLHelper_initGL(EGL_NO_CONTEXT, window, &context, &surface);
-//    eglMakeCurrent(display, surface, surface, context);
 //    int surfaceWidth = 0;
 //    int surfaceHeight = 0;
 //    GLHelper_getSurfaceSize(surface, surfaceWidth, surfaceHeight);
-//
-//    // Tải hình ảnh bằng stb_image
-//    int width, height, nrChannels;
-//    unsigned char* data = stbi_load("/storage/emulated/0/Download/1045-2.jpg", &width, &height, &nrChannels, 0);
-//    if (data == nullptr) {
-//        LOGE("Failed to load image: %s", "/storage/emulated/0/Download/1045-2.jpg");
+
+    // Tải hình ảnh bằng stb_image
+    int width, height, nrChannels;
+    unsigned char* data = stbi_load(picturesDir, &width, &height, &nrChannels, 0);
+    if (data == nullptr) {
+        LOGE("Failed to load image: %s", "/storage/emulated/0/Download/1045-2.jpg");
 //        env->ReleaseStringUTFChars(picturesDir, "/storage/emulated/0/Download/1045-2.jpg");
-//        return;
-//    }
-//
-//    glClearColor(0, 0, 1, 1);
-//    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-//
-//    // Tạo texture OpenGL
-//    GLuint textureID;
-//    glGenTextures(1, &textureID);
-//    glBindTexture(GL_TEXTURE_2D, textureID);
-//
-//    // Cài đặt các thông số cho texture
-//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-//
-//    // Tải dữ liệu hình ảnh vào texture
-//    GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
-//    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-//
+        return;
+    } else {
+        LOGD("Load texture successfully");
+    }
+
+    // Tạo texture OpenGL
+    GLuint tmpTextureID;
+    glGenTextures(1, &tmpTextureID);
+    glBindTexture(GL_TEXTURE_2D, tmpTextureID);
+
+    // Cài đặt các thông số cho texture
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // Tải dữ liệu hình ảnh vào texture
+    GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
 //    GLuint readFramebuffer = 0;
 //    glGenFramebuffers(1, &readFramebuffer);
 //
 //    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
 //    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
 //    glBlitFramebuffer(0, 0, width, height, (surfaceWidth - width) / 2, (surfaceHeight - height) / 2, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-//
-////    // Clean up resources
-////    glDeleteVertexArrays(1, &VAO);
-////    glDeleteBuffers(1, &VBO);
-////    glDeleteBuffers(1, &EBO);
-//
+
+//    // Clean up resources
+//    glDeleteVertexArrays(1, &VAO);
+//    glDeleteBuffers(1, &VBO);
+//    glDeleteBuffers(1, &EBO);
+
 //    eglSwapBuffers(display, surface);
 //
 //    // Giải phóng OpenGL
-//    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 //    GLHelper_releaseSurface(surface);
 //    GLHelper_releaseContext(context);
-//
-//    // Giải phóng dữ liệu hình ảnh sau khi tải vào texture
-//    stbi_image_free(data);
+
+    // Giải phóng dữ liệu hình ảnh sau khi tải vào texture
+    stbi_image_free(data);
 //    env->ReleaseStringUTFChars(picturesDir, path);
-//}
+    textureID = tmpTextureID;
+
+    //Bind texture
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glUniform1i(glGetUniformLocation(shaderProgram, "textureSampler"), 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
