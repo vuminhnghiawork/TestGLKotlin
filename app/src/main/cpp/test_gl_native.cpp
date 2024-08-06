@@ -35,7 +35,6 @@ GLuint textureID = 0;
 GLuint CreateShaderProgram();
 void SetupBuffers();
 void DrawRectangle(GLuint shaderProgram);
-void loadTextureFromFile(const char* picturesDir);
 void renderLoop();
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -48,8 +47,7 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
     LOGI("Java_com_vinai_testglkotlin_MainActivity_initSurface");
     window = ANativeWindow_fromSurface(env, j_surface);
     running = true;
-    const char* path = env->GetStringUTFChars(picturesDir, nullptr);
-    renderThread = std::thread([path]{
+    renderThread = std::thread([]{
         LOGI("Start render thread");
         display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if(!GLHelper_initGL(EGL_NO_CONTEXT, window, &context, &surface)) {
@@ -64,7 +62,6 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
 
         // Thiết lập buffers và VAO
         SetupBuffers();
-        loadTextureFromFile(path);
         while (running) {
             bool willUpdateSize = false;
             {
@@ -82,7 +79,7 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
 //                LOGD("texture not loaded yet. skip");
                 continue;
             } else {
-//                LOGD("Drawing");
+                LOGD("Drawing");
             }
             DrawRectangle(shaderProgram);
             eglSwapBuffers(display, surface);
@@ -220,7 +217,6 @@ void SetupBuffers() {
 }
 
 void DrawRectangle(GLuint shaderProgram) {
-    eglMakeCurrent(display, surface, surface, context);
     glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(shaderProgram);
@@ -229,9 +225,11 @@ void DrawRectangle(GLuint shaderProgram) {
     glBindVertexArray(0);
 }
 
-void loadTextureFromFile(const char* picturesDir) {
-    LOGD("display=%d, surface=%d, context=%d", display, surface, context);
+extern "C" JNIEXPORT void JNICALL
+Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobject thiz, jobject _surface, jstring picturesDir) {
+    LOGD("display=%d, surface=%d, context=%d", display);
 //    // Chuyển đổi jstring thành chuỗi C
+    const char* path = env->GetStringUTFChars(picturesDir, nullptr);
 //    window = ANativeWindow_fromSurface(env, _surface);
 //
 //    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -242,10 +240,10 @@ void loadTextureFromFile(const char* picturesDir) {
 
     // Tải hình ảnh bằng stb_image
     int width, height, nrChannels;
-    unsigned char* data = stbi_load(picturesDir, &width, &height, &nrChannels, 0);
+    unsigned char* data = stbi_load("/storage/emulated/0/Download/1045-2.jpg", &width, &height, &nrChannels, 0);
     if (data == nullptr) {
         LOGE("Failed to load image: %s", "/storage/emulated/0/Download/1045-2.jpg");
-//        env->ReleaseStringUTFChars(picturesDir, "/storage/emulated/0/Download/1045-2.jpg");
+        env->ReleaseStringUTFChars(picturesDir, "/storage/emulated/0/Download/1045-2.jpg");
         return;
     } else {
         LOGD("Load texture successfully");
@@ -287,7 +285,7 @@ void loadTextureFromFile(const char* picturesDir) {
 
     // Giải phóng dữ liệu hình ảnh sau khi tải vào texture
     stbi_image_free(data);
-//    env->ReleaseStringUTFChars(picturesDir, path);
+    env->ReleaseStringUTFChars(picturesDir, path);
     textureID = tmpTextureID;
 
     //Bind texture

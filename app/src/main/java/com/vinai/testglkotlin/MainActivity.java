@@ -30,9 +30,10 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 100;
     public native String stringFromJNI();
-    public native void initSurface(Surface surface, String pictureDir);
+    public native void initSurface(Surface surface);
     public native void deinitSurface();
     public native void surfaceResize();
+    public native void loadTextureFromFile(Surface surface, String picturesDir);
 
 
     private static final String TAG = "MainActivity";
@@ -48,17 +49,7 @@ public class MainActivity extends AppCompatActivity {
         surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-                // Lấy đường dẫn đến thư mục ảnh công cộng
-                File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                picturesDir = new File(picturesDir, "1045-2.jpg");
-                if (picturesDir != null) {
-                    Log.d("MainActivity", "Pictures Directory: " + picturesDir.getAbsolutePath());
-                    SurfaceView surfaceView = findViewById(R.id.surfaceView);
-                    Surface surface = surfaceView.getHolder().getSurface();
-                }
-                Toast.makeText(MainActivity.this, "dcmm!", Toast.LENGTH_SHORT).show();
-
-                initSurface(surfaceHolder.getSurface(), picturesDir.getAbsolutePath());
+                initSurface(surfaceHolder.getSurface());
             }
 
             @Override
@@ -80,7 +71,16 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 // Xử lý khi button được nhấp
 
-
+                // Lấy đường dẫn đến thư mục ảnh công cộng
+                File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                picturesDir = new File(picturesDir, "1045-2.jpg");
+                if (picturesDir != null) {
+                    Log.d("MainActivity", "Pictures Directory: " + picturesDir.getAbsolutePath());
+                    SurfaceView surfaceView = findViewById(R.id.surfaceView);
+                    Surface surface = surfaceView.getHolder().getSurface();
+                    loadTextureFromFile(surface, picturesDir.getAbsolutePath());
+                }
+                Toast.makeText(MainActivity.this, "dcmm!", Toast.LENGTH_SHORT).show();
 
             }
         });
