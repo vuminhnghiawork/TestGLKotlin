@@ -35,7 +35,6 @@ GLuint textureID = 0;
 GLuint CreateShaderProgram();
 void SetupBuffers();
 void DrawRectangle(GLuint shaderProgram);
-void renderLoop();
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_vinai_testglkotlin_MainActivity_stringFromJNI(JNIEnv *env, jobject instance) {
@@ -43,7 +42,7 @@ Java_com_vinai_testglkotlin_MainActivity_stringFromJNI(JNIEnv *env, jobject inst
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface, jstring picturesDir) {
+Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface) {
     LOGI("Java_com_vinai_testglkotlin_MainActivity_initSurface");
     window = ANativeWindow_fromSurface(env, j_surface);
     running = true;

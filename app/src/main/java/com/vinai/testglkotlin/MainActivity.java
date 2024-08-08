@@ -35,7 +35,6 @@ public class MainActivity extends AppCompatActivity {
     public native void surfaceResize();
     public native void loadTextureFromFile(Surface surface, String picturesDir);
 
-
     private static final String TAG = "MainActivity";
     private ImageView myImageView;
 
@@ -107,27 +106,27 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-//        // Sử dụng phương thức JNI
-//        TextView textView = findViewById(R.id.textView);
-//        textView.setText(stringFromJNI());
-//
-//        SurfaceView surfaceView = findViewById(R.id.surfaceView);
-//        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
-//            @Override
-//            public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-//                initSurface(surfaceHolder.getSurface());
-//            }
-//
-//            @Override
-//            public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
-//                surfaceResize();
-//            }
-//
-//            @Override
-//            public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
-//                deinitSurface();
-//            }
-//        });
+        // Sử dụng phương thức JNI
+        TextView textView = findViewById(R.id.textView);
+        textView.setText(stringFromJNI());
+
+        SurfaceView surfaceView = findViewById(R.id.surfaceView);
+        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
+                initSurface(surfaceHolder.getSurface());
+            }
+
+            @Override
+            public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
+                surfaceResize();
+            }
+
+            @Override
+            public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
+                deinitSurface();
+            }
+        });
     };
 
     private void accessExternalStorage() {
