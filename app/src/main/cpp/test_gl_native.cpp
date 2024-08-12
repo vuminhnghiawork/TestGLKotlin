@@ -35,6 +35,8 @@ GLuint textureID = 0;
 GLuint CreateShaderProgram();
 void SetupBuffers();
 void DrawRectangle(GLuint shaderProgram);
+void loadTextureFromFile(const char* pictureDir);
+void renderLoop();
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_vinai_testglkotlin_MainActivity_stringFromJNI(JNIEnv *env, jobject instance) {
@@ -42,11 +44,12 @@ Java_com_vinai_testglkotlin_MainActivity_stringFromJNI(JNIEnv *env, jobject inst
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface) {
+Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface, jstring picturesDir) {
     LOGI("Java_com_vinai_testglkotlin_MainActivity_initSurface");
     window = ANativeWindow_fromSurface(env, j_surface);
     running = true;
-    renderThread = std::thread([]{
+    const char* path = env->GetStringUTFChars(picturesDir, nullptr);
+    renderThread = std::thread([path]{
         LOGI("Start render thread");
         display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if(!GLHelper_initGL(EGL_NO_CONTEXT, window, &context, &surface)) {
@@ -61,31 +64,36 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
 
         // Thiết lập buffers và VAO
         SetupBuffers();
-        while (running) {
-            bool willUpdateSize = false;
-            {
-                std::lock_guard<std::mutex> lk(mMutex);
-                willUpdateSize = triggerUpdateSize;
-                triggerUpdateSize = false;
-            }
-            if (willUpdateSize) {
-                GLHelper_getSurfaceSize(surface, width, height);
-                resize_gl(width, height);
-            }
-//            render_gl(width, height);
-            if (textureID == 0)
-            {
-//                LOGD("texture not loaded yet. skip");
-                continue;
-            } else {
-                LOGD("Drawing");
-            }
-            DrawRectangle(shaderProgram);
-            eglSwapBuffers(display, surface);
-
-            glClearColor(1,1,1,1);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        }
+        glClearColor(1, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        loadTextureFromFile(path);
+        DrawRectangle(shaderProgram);
+        eglSwapBuffers(display, surface);
+//        while (running) {
+//            bool willUpdateSize = false;
+//            {
+//                std::lock_guard<std::mutex> lk(mMutex);
+//                willUpdateSize = triggerUpdateSize;
+//                triggerUpdateSize = false;
+//            }
+//            if (willUpdateSize) {
+//                GLHelper_getSurfaceSize(surface, width, height);
+//                resize_gl(width, height);
+//            }
+////            render_gl(width, height);
+//            if (textureID == 0)
+//            {
+////                LOGD("texture not loaded yet. skip");
+//                continue;
+//            } else {
+//                LOGD("Drawing");
+//            }
+////            DrawRectangle(shaderProgram);
+//
+////
+////            glClearColor(1,1,1,1);
+////            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+//        }
         deinit_gl(width, height);
         GLHelper_releaseSurface(surface);
         GLHelper_releaseContext(context);
@@ -216,19 +224,34 @@ void SetupBuffers() {
 }
 
 void DrawRectangle(GLuint shaderProgram) {
-    glClear(GL_COLOR_BUFFER_BIT);
+//    glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(shaderProgram);
     glBindVertexArray(VAO);
+    //Bind texture
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glUniform1i(glGetUniformLocation(shaderProgram, "textureSampler"), 0);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray(0);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobject thiz, jobject _surface, jstring picturesDir) {
-    LOGD("display=%d, surface=%d, context=%d", display);
-//    // Chuyển đổi jstring thành chuỗi C
-    const char* path = env->GetStringUTFChars(picturesDir, nullptr);
+void loadTextureFromFile(const char* picturesDir) {
+    LOGD("display=%d, surface=%d, context=%d", display, surface, context);
+
+//extern "C" JNIEXPORT void JNICALL
+//Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobject thiz, jobject _surface, jstring picturesDir) {
+//    LOGD("display=%d, surface=%d, context=%d", display);
+////    // Chuyển đổi jstring thành chuỗi C
+//    const char* path = env->GetStringUTFChars(picturesDir, nullptr);
+//
+//    eglMakeCurrent(display, surface, surface, context);
+//    if (eglGetError() != EGL_SUCCESS) {
+//        LOGE("Failed to make context current");
+//        return;
+//    }
+
 //    window = ANativeWindow_fromSurface(env, _surface);
 //
 //    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -237,15 +260,26 @@ Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobjec
 //    int surfaceHeight = 0;
 //    GLHelper_getSurfaceSize(surface, surfaceWidth, surfaceHeight);
 
+//    // Tải hình ảnh bằng stb_image
+//    int width, height, nrChannels;
+//    unsigned char* data = stbi_load("/storage/emulated/0/Download/1045-2.jpg", &width, &height, &nrChannels, 0);
+//    if (data == nullptr) {
+//        LOGE("Failed to load image: %s", "/storage/emulated/0/Download/1045-2.jpg");
+//        env->ReleaseStringUTFChars(picturesDir, "/storage/emulated/0/Download/1045-2.jpg");
+//        return;
+//    } else {
+//        LOGD("Load texture successfully");
+//    }
+
     // Tải hình ảnh bằng stb_image
     int width, height, nrChannels;
-    unsigned char* data = stbi_load("/storage/emulated/0/Download/1045-2.jpg", &width, &height, &nrChannels, 0);
+    unsigned char* data = stbi_load(picturesDir, &width, &height, &nrChannels, 0);
     if (data == nullptr) {
         LOGE("Failed to load image: %s", "/storage/emulated/0/Download/1045-2.jpg");
-        env->ReleaseStringUTFChars(picturesDir, "/storage/emulated/0/Download/1045-2.jpg");
+
         return;
     } else {
-        LOGD("Load texture successfully");
+        LOGD("Load texture successfully, Width: %d, Height: %d, nrChannels: %x", width, height, nrChannels);
     }
 
     // Tạo texture OpenGL
@@ -259,17 +293,20 @@ Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobjec
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+
     // Tải dữ liệu hình ảnh vào texture
     GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
     glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    // Giải phóng dữ liệu hình ảnh sau khi tải vào texture
+    stbi_image_free(data);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-//    GLuint readFramebuffer = 0;
-//    glGenFramebuffers(1, &readFramebuffer);
-//
-//    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
-//    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
-//    glBlitFramebuffer(0, 0, width, height, (surfaceWidth - width) / 2, (surfaceHeight - height) / 2, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    GLuint readFramebuffer = 0;
+    glGenFramebuffers(1, &readFramebuffer);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tmpTextureID, 0);
+    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
 //    // Clean up resources
 //    glDeleteVertexArrays(1, &VAO);
@@ -282,14 +319,7 @@ Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobjec
 //    GLHelper_releaseSurface(surface);
 //    GLHelper_releaseContext(context);
 
-    // Giải phóng dữ liệu hình ảnh sau khi tải vào texture
-    stbi_image_free(data);
-    env->ReleaseStringUTFChars(picturesDir, path);
+//    env->ReleaseStringUTFChars(picturesDir, path);
     textureID = tmpTextureID;
 
-    //Bind texture
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textureID);
-    glUniform1i(glGetUniformLocation(shaderProgram, "textureSampler"), 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }

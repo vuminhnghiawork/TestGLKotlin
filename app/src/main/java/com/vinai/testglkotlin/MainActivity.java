@@ -30,10 +30,10 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 100;
     public native String stringFromJNI();
-    public native void initSurface(Surface surface);
+    public native void initSurface(Surface surface, String picturesDir);
     public native void deinitSurface();
     public native void surfaceResize();
-    public native void loadTextureFromFile(Surface surface, String picturesDir);
+//    public native void loadTextureFromFile(Surface surface, String picturesDir);
 
     private static final String TAG = "MainActivity";
     private ImageView myImageView;
@@ -48,7 +48,17 @@ public class MainActivity extends AppCompatActivity {
         surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-                initSurface(surfaceHolder.getSurface());
+                // Lấy đường dẫn đến thư mục ảnh công cộng
+                File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                picturesDir = new File(picturesDir, "1045-2.jpg");
+                if (picturesDir != null) {
+                    Log.d("MainActivity", "Pictures Directory: " + picturesDir.getAbsolutePath());
+                    SurfaceView surfaceView = findViewById(R.id.surfaceView);
+                    Surface surface = surfaceView.getHolder().getSurface();
+                }
+                Toast.makeText(MainActivity.this, "dcmm!", Toast.LENGTH_SHORT).show();
+
+                initSurface(surfaceHolder.getSurface(), picturesDir.getAbsolutePath());
             }
 
             @Override
@@ -69,18 +79,6 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 // Xử lý khi button được nhấp
-
-                // Lấy đường dẫn đến thư mục ảnh công cộng
-                File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                picturesDir = new File(picturesDir, "1045-2.jpg");
-                if (picturesDir != null) {
-                    Log.d("MainActivity", "Pictures Directory: " + picturesDir.getAbsolutePath());
-                    SurfaceView surfaceView = findViewById(R.id.surfaceView);
-                    Surface surface = surfaceView.getHolder().getSurface();
-                    loadTextureFromFile(surface, picturesDir.getAbsolutePath());
-                }
-                Toast.makeText(MainActivity.this, "dcmm!", Toast.LENGTH_SHORT).show();
-
             }
         });
 
@@ -91,7 +89,6 @@ public class MainActivity extends AppCompatActivity {
         // Quyền đã được cấp, bạn có thể truy cập vào bộ nhớ ngoài
             accessExternalStorage();
     }
-
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -106,27 +103,27 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // Sử dụng phương thức JNI
-        TextView textView = findViewById(R.id.textView);
-        textView.setText(stringFromJNI());
-
-        SurfaceView surfaceView = findViewById(R.id.surfaceView);
-        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
-            @Override
-            public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-                initSurface(surfaceHolder.getSurface());
-            }
-
-            @Override
-            public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
-                surfaceResize();
-            }
-
-            @Override
-            public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
-                deinitSurface();
-            }
-        });
+//        // Sử dụng phương thức JNI
+//        TextView textView = findViewById(R.id.textView);
+//        textView.setText(stringFromJNI());
+//
+//        SurfaceView surfaceView = findViewById(R.id.surfaceView);
+//        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
+//            @Override
+//            public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
+//                initSurface(surfaceHolder.getSurface());
+//            }
+//
+//            @Override
+//            public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
+//                surfaceResize();
+//            }
+//
+//            @Override
+//            public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
+//                deinitSurface();
+//            }
+//        });
     };
 
     private void accessExternalStorage() {
