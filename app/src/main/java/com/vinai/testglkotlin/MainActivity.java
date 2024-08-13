@@ -25,7 +25,6 @@ import java.io.File;
 public class MainActivity extends AppCompatActivity {
     static {
         System.loadLibrary("test_app_native_renderer"); // Tên module bạn đã khai báo trong Android.mk
-//        System.loadLibrary("test_app_native"); // Tên module bạn đã khai báo trong Android.mk
     }
 
     private static final int PERMISSION_REQUEST_CODE = 100;
@@ -33,7 +32,7 @@ public class MainActivity extends AppCompatActivity {
     public native void initSurface(Surface surface, String picturesDir);
     public native void deinitSurface();
     public native void surfaceResize();
-//    public native void loadTextureFromFile(Surface surface, String picturesDir);
+
 
     private static final String TAG = "MainActivity";
     private ImageView myImageView;
@@ -102,28 +101,6 @@ public class MainActivity extends AppCompatActivity {
                 Log.e("MainActivity", "Permission denied to write to external storage");
             }
         }
-
-//        // Sử dụng phương thức JNI
-//        TextView textView = findViewById(R.id.textView);
-//        textView.setText(stringFromJNI());
-//
-//        SurfaceView surfaceView = findViewById(R.id.surfaceView);
-//        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
-//            @Override
-//            public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-//                initSurface(surfaceHolder.getSurface());
-//            }
-//
-//            @Override
-//            public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
-//                surfaceResize();
-//            }
-//
-//            @Override
-//            public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
-//                deinitSurface();
-//            }
-//        });
     };
 
     private void accessExternalStorage() {

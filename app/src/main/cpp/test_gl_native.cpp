@@ -69,31 +69,6 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
         loadTextureFromFile(path);
         DrawRectangle(shaderProgram);
         eglSwapBuffers(display, surface);
-//        while (running) {
-//            bool willUpdateSize = false;
-//            {
-//                std::lock_guard<std::mutex> lk(mMutex);
-//                willUpdateSize = triggerUpdateSize;
-//                triggerUpdateSize = false;
-//            }
-//            if (willUpdateSize) {
-//                GLHelper_getSurfaceSize(surface, width, height);
-//                resize_gl(width, height);
-//            }
-////            render_gl(width, height);
-//            if (textureID == 0)
-//            {
-////                LOGD("texture not loaded yet. skip");
-//                continue;
-//            } else {
-//                LOGD("Drawing");
-//            }
-////            DrawRectangle(shaderProgram);
-//
-////
-////            glClearColor(1,1,1,1);
-////            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-//        }
         deinit_gl(width, height);
         GLHelper_releaseSurface(surface);
         GLHelper_releaseContext(context);
@@ -182,10 +157,10 @@ GLuint CreateShaderProgram() {
 // Vertices coordinates
 const GLfloat vertices[] =
         { //     COORDINATES     /        COLORS      /   TexCoord  //
-                -0.5f, -0.5f, 0.0f,     1.0f, 0.0f, 0.0f,   0.0f, 0.0f, // Lower left corner
-                -0.5f,  0.5f, 0.0f,     0.0f, 1.0f, 0.0f,   0.0f, 1.0f, // Upper left corner
-                0.5f,  0.5f, 0.0f,     0.0f, 0.0f, 1.0f,    1.0f, 1.0f, // Upper right corner
-                0.5f, -0.5f, 0.0f,     1.0f, 1.0f, 1.0f,    1.0f, 0.0f  // Lower right corner
+                -0.5, -0.5f, 0.0f,     1.0f, 0.0f, 0.0f,   0.0f, 0.0f, // Lower left corner
+                -0.5,  0.5f, 0.0f,     0.0f, 1.0f, 0.0f,   0.0f, 1.0f, // Upper left corner
+                0.5,  0.5f, 0.0f,     0.0f, 0.0f, 1.0f,    1.0f, 1.0f, // Upper right corner
+                0.5, -0.5f, 0.0f,     1.0f, 1.0f, 1.0f,    1.0f, 0.0f  // Lower right corner
         };
 
 const GLuint indices[] = {
@@ -212,9 +187,6 @@ void SetupBuffers() {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
     glEnableVertexAttribArray(0);
 
-//    // color
-//    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-//    glEnableVertexAttribArray(1);
 
     //Texture coordinate
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
@@ -239,37 +211,6 @@ void DrawRectangle(GLuint shaderProgram) {
 
 void loadTextureFromFile(const char* picturesDir) {
     LOGD("display=%d, surface=%d, context=%d", display, surface, context);
-
-//extern "C" JNIEXPORT void JNICALL
-//Java_com_vinai_testglkotlin_MainActivity_loadTextureFromFile(JNIEnv *env, jobject thiz, jobject _surface, jstring picturesDir) {
-//    LOGD("display=%d, surface=%d, context=%d", display);
-////    // Chuyển đổi jstring thành chuỗi C
-//    const char* path = env->GetStringUTFChars(picturesDir, nullptr);
-//
-//    eglMakeCurrent(display, surface, surface, context);
-//    if (eglGetError() != EGL_SUCCESS) {
-//        LOGE("Failed to make context current");
-//        return;
-//    }
-
-//    window = ANativeWindow_fromSurface(env, _surface);
-//
-//    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-//    GLHelper_initGL(EGL_NO_CONTEXT, window, &context, &surface);
-//    int surfaceWidth = 0;
-//    int surfaceHeight = 0;
-//    GLHelper_getSurfaceSize(surface, surfaceWidth, surfaceHeight);
-
-//    // Tải hình ảnh bằng stb_image
-//    int width, height, nrChannels;
-//    unsigned char* data = stbi_load("/storage/emulated/0/Download/1045-2.jpg", &width, &height, &nrChannels, 0);
-//    if (data == nullptr) {
-//        LOGE("Failed to load image: %s", "/storage/emulated/0/Download/1045-2.jpg");
-//        env->ReleaseStringUTFChars(picturesDir, "/storage/emulated/0/Download/1045-2.jpg");
-//        return;
-//    } else {
-//        LOGD("Load texture successfully");
-//    }
 
     // Tải hình ảnh bằng stb_image
     int width, height, nrChannels;
@@ -308,18 +249,6 @@ void loadTextureFromFile(const char* picturesDir) {
     glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tmpTextureID, 0);
     glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-//    // Clean up resources
-//    glDeleteVertexArrays(1, &VAO);
-//    glDeleteBuffers(1, &VBO);
-//    glDeleteBuffers(1, &EBO);
-
-//    eglSwapBuffers(display, surface);
-//
-//    // Giải phóng OpenGL
-//    GLHelper_releaseSurface(surface);
-//    GLHelper_releaseContext(context);
-
-//    env->ReleaseStringUTFChars(picturesDir, path);
     textureID = tmpTextureID;
 
 }
