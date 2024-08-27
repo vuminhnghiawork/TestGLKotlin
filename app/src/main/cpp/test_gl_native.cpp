@@ -33,15 +33,16 @@ std::mutex mMutex;
 
 GLuint textureID = 0;
 GLuint CreateShaderProgram();
+GLuint CreateLineShaderProgram();
+GLuint lineProgram;
+GLuint vbo[2];
+float lineOffset = 0.0f;
 void SetupBuffers();
 void DrawRectangle(GLuint shaderProgram);
+void DrawMovingLine(GLuint lineProgram);
 void loadTextureFromFile(const char* pictureDir);
 void renderLoop();
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_vinai_testglkotlin_MainActivity_stringFromJNI(JNIEnv *env, jobject instance) {
-    return env->NewStringUTF("Xin chao");
-}
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface, jstring picturesDir) {
@@ -59,16 +60,36 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
         eglMakeCurrent(display, surface, surface, context);
         GLHelper_getSurfaceSize(surface, width, height);
         init_gl(width, height);
+
         // Tạo shader program
         shaderProgram = CreateShaderProgram();
+        lineProgram = CreateLineShaderProgram();
 
         // Thiết lập buffers và VAO
         SetupBuffers();
-        glClearColor(1, 0, 0, 1);
+        glClearColor(1,0,0,0);
+//        glClearColor(1, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         loadTextureFromFile(path);
-        DrawRectangle(shaderProgram);
-        eglSwapBuffers(display, surface);
+
+        while (running) {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // Vẽ hình chữ nhật
+            DrawRectangle(shaderProgram);
+
+            // Cập nhật vị trí đường di chuyển
+            lineOffset += 0.01f;
+            if (lineOffset > 2.0f) {
+                lineOffset = -1.0f;
+            }
+
+            // Vẽ đường di chuyển
+            DrawMovingLine(lineProgram);
+
+            eglSwapBuffers(display, surface);
+        }
+
         deinit_gl(width, height);
         GLHelper_releaseSurface(surface);
         GLHelper_releaseContext(context);
@@ -88,7 +109,7 @@ Java_com_vinai_testglkotlin_MainActivity_deinitSurface(JNIEnv *env, jobject inst
     ANativeWindow_release(window);
 }
 
-// Vertex shader source code
+// Rectangle shader source code
 const char* vertexShaderSource = R"(
 #version 310 es
 precision mediump float;
@@ -101,7 +122,6 @@ void main() {
 }
 )";
 
-// Fragment shader source code
 const char* fragmentShaderSource = R"(
 #version 310 es
 precision mediump float;
@@ -112,6 +132,31 @@ void main() {
     fragColor = texture(textureSampler, texCoord);
 }
 )";
+
+// Line shaders source code
+const char* lineVertexShaderSource = R"(
+    #version 310 es
+    layout(location = 0) in vec4 aPosition;
+    uniform float uOffset;
+    out vec2 vPosition;
+    void main() {
+        gl_Position = aPosition + vec4(uOffset, 0.0, 0.0, 0.0);
+        vPosition = gl_Position.xy;
+    }
+)";
+
+const char* lineFragmentShaderSource = R"(
+    #version 310 es
+    precision mediump float;
+    in vec2 vPosition;
+    out vec4 fragColor;
+    void main() {
+        float brightness = 1.0 - (vPosition.x + 1.0) / 2.0;
+        brightness = pow(brightness, 2.0);  // Tăng cường độ sáng ở bên trái
+        fragColor = vec4(1.0, 1.0, 1.0, brightness);+
+    }
+)";
+
 
 // Compile shader and check for errors
 GLuint CompileShader(GLenum type, const char* source) {
@@ -154,6 +199,30 @@ GLuint CreateShaderProgram() {
     return shaderProgram;
 }
 
+GLuint CreateLineShaderProgram() {
+    GLuint vertexShader = CompileShader(GL_VERTEX_SHADER, lineVertexShaderSource);
+    GLuint fragmentShader = CompileShader(GL_FRAGMENT_SHADER, lineFragmentShaderSource);
+
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+
+    GLint success;
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
+        LOGE("Line shader program linking error: %s", infoLog);
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    return shaderProgram;
+}
+
+
 // Vertices coordinates
 const GLfloat vertices[] =
         { //     COORDINATES     /        COLORS      /   TexCoord  //
@@ -166,6 +235,12 @@ const GLfloat vertices[] =
 const GLuint indices[] = {
         0, 1, 2,
         0, 2, 3
+};
+
+GLfloat lineVertices[] = {
+        -1, 0,
+        1, 0
+
 };
 
 GLuint VBO, VAO, EBO;
@@ -193,6 +268,11 @@ void SetupBuffers() {
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
+
+    // Setup VBO cho đường di chuyển
+    glGenBuffers(1, &vbo[1]);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(lineVertices), lineVertices, GL_STATIC_DRAW);
 }
 
 void DrawRectangle(GLuint shaderProgram) {
@@ -207,6 +287,20 @@ void DrawRectangle(GLuint shaderProgram) {
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray(0);
+}
+
+void DrawMovingLine (GLuint lineProgram) {
+// Draw moving line
+glUseProgram(lineProgram);
+GLuint offsetLocation = glGetUniformLocation(lineProgram, "uOffset");
+glUniform1f(offsetLocation, lineOffset - 1.0f);
+
+glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
+glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+glEnableVertexAttribArray(0);
+glDrawArrays(GL_LINES, 0, 2);
+
+glFinish();
 }
 
 void loadTextureFromFile(const char* picturesDir) {

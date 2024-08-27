@@ -11,29 +11,33 @@
     <SurfaceView
         android:id="@+id/surfaceView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        tools:layout_editor_absoluteX="0dp"
+        tools:layout_editor_absoluteY="-16dp" />
 
     <TextView
         android:id="@+id/textView"
-        android:textColor="@color/white"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+        android:layout_width="91dp"
+        android:layout_height="34dp"
+        android:layout_marginStart="40dp"
+        android:layout_marginTop="36dp"
         android:background="@android:color/holo_blue_bright"
         android:padding="8dp"
-        android:text="Hello World!" />
+        android:text="Hello World!"
+        android:textColor="@color/white"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <Button
         android:id="@+id/myButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="140dp"
+        android:layout_marginStart="120dp"
         android:onClick="onButtonClick"
         android:text="Click Me"
         app:layout_constraintStart_toEndOf="@+id/textView"
         tools:ignore="MissingConstraints"
-        tools:layout_editor_absoluteY="81dp" />
+        tools:layout_editor_absoluteY="38dp" />
 
     <ImageView
         android:id="@+id/myImageView"

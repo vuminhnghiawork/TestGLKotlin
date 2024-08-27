@@ -28,7 +28,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private static final int PERMISSION_REQUEST_CODE = 100;
-    public native String stringFromJNI();
     public native void initSurface(Surface surface, String picturesDir);
     public native void deinitSurface();
     public native void surfaceResize();
@@ -60,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
                 initSurface(surfaceHolder.getSurface(), picturesDir.getAbsolutePath());
             }
 
+
             @Override
             public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
                 surfaceResize();
@@ -78,6 +78,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 // Xử lý khi button được nhấp
+                int color = ContextCompat.getColor(MainActivity.this, R.color.button_pressed_color);
+                getWindow().getDecorView().setBackgroundColor(color);
+
+                Toast.makeText(MainActivity.this, "dcmm!", Toast.LENGTH_SHORT).show();
             }
         });
 
