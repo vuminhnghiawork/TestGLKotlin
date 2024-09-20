@@ -39,7 +39,7 @@ GLuint vbo[2];
 GLuint vao[2];
 GLuint ebo[2];
 GLuint VBO, VAO, EBO;
-float rectangleOffset = -1.0f;
+float rectangleOffset = 0.0f;
 void SetupBuffers();
 void DrawRectangle(GLuint shaderProgram);
 void DrawMovingRectangle(GLuint movingRectangleProgram);
@@ -82,9 +82,9 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
             DrawRectangle(shaderProgram);
 
             // Cập nhật vị trí hình chữ nhật di chuyển
-            rectangleOffset += 0.01f;
-            if (rectangleOffset > 3.0f) {
-                rectangleOffset = -1.0f;
+            rectangleOffset += 0.005f;
+            if (rectangleOffset > 2.0f) {
+                rectangleOffset = 0.0f;
             }
 
             // Vẽ đường di chuyển
@@ -145,8 +145,8 @@ out vec2 vPos;  // Truyền giá trị vị trí cho fragment shader
 uniform float rectangleOffset;
 
 void main() {
-    vPos = aPosition.xy;  // Lấy giá trị vị trí x, y của đỉnh
     gl_Position = vec4(aPosition.x + rectangleOffset - 1.0, aPosition.y, aPosition.z, 1.0);
+    vPos = gl_Position.xy;  // Lấy giá trị vị trí x, y của đỉnh
 }
 )";
 
@@ -169,12 +169,15 @@ void main() {
     float distanceFromCenter = abs(vPos.x);  // Tính khoảng cách từ tâm (vPos.x = 0)
     float fadeFactor = 1.0 - distanceFromCenter;  // Giảm độ đậm dần khi đi xa tâm
     fadeFactor = max(fadeFactor, 0.0);  // Đảm bảo giá trị không âm
-    fragColor = vec4(1.0, 1.0, 0.0, fadeFactor);  // Màu vàng với alpha dựa trên fadeFactor
+
 
     // Kiểm tra nếu pixel nằm ngoài vùng được xác định
     if (vPos.x < leftLimit || vPos.x > rightLimit || vPos.y < bottomLimit || vPos.y > topLimit) {
         fadeFactor = 0.0;  // Bỏ qua pixel nếu nằm ngoài vùng giới hạn
+
+
     }
+    fragColor = vec4(1.0, 1.0, 0.0, fadeFactor);  // Màu vàng với alpha dựa trên fadeFactor
 }
 )";
 
@@ -338,10 +341,10 @@ void DrawMovingRectangle(GLuint movingRectangleProgram) {
     GLint topLimitLoc = glGetUniformLocation(movingRectangleProgram, "topLimit");
 
     // Thiết lập giá trị cho các uniform giới hạn vùng vẽ
-    glUniform1f(leftLimitLoc, -1.0f);
-    glUniform1f(rightLimitLoc, 1.0f);
-    glUniform1f(bottomLimitLoc, -1.0f);
-    glUniform1f(topLimitLoc, 1.0f);
+    glUniform1f(leftLimitLoc, -0.5f);
+    glUniform1f(rightLimitLoc, 0.5f);
+    glUniform1f(bottomLimitLoc, -0.5f);
+    glUniform1f(topLimitLoc, 0.5f);
     glUniform1f(offsetLocation, rectangleOffset);
 
     // Bật chế độ blending trước khi vẽ để đảm bảo hiệu ứng alpha hoạt động
