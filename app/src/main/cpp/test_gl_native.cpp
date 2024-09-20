@@ -24,6 +24,7 @@ EGLContext context;
 EGLSurface surface;
 EGLDisplay display;
 GLuint shaderProgram;
+GLuint movingRectangleProgram;
 int width = 0;
 int height = 0;
 bool running = false;
@@ -33,16 +34,19 @@ std::mutex mMutex;
 
 GLuint textureID = 0;
 GLuint CreateShaderProgram();
-GLuint CreateLineShaderProgram();
-GLuint lineProgram;
+GLuint CreateMovingRectangleShaderProgram();
 GLuint vbo[2];
-float lineOffset = 0.0f;
+GLuint vao[2];
+GLuint ebo[2];
+GLuint VBO, VAO, EBO;
+float rectangleOffset = -1.0f;
 void SetupBuffers();
 void DrawRectangle(GLuint shaderProgram);
-void DrawMovingLine(GLuint lineProgram);
+void DrawMovingRectangle(GLuint movingRectangleProgram);
 void loadTextureFromFile(const char* pictureDir);
 void renderLoop();
 
+void glUniform2f(GLuint i, float d);
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface, jstring picturesDir) {
@@ -63,12 +67,11 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
 
         // Tạo shader program
         shaderProgram = CreateShaderProgram();
-        lineProgram = CreateLineShaderProgram();
+        movingRectangleProgram = CreateMovingRectangleShaderProgram();
 
         // Thiết lập buffers và VAO
         SetupBuffers();
-        glClearColor(1,0,0,0);
-//        glClearColor(1, 0, 0, 1);
+        glClearColor(0,0,0,0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         loadTextureFromFile(path);
 
@@ -78,14 +81,14 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
             // Vẽ hình chữ nhật
             DrawRectangle(shaderProgram);
 
-            // Cập nhật vị trí đường di chuyển
-            lineOffset += 0.01f;
-            if (lineOffset > 2.0f) {
-                lineOffset = -1.0f;
+            // Cập nhật vị trí hình chữ nhật di chuyển
+            rectangleOffset += 0.01f;
+            if (rectangleOffset > 3.0f) {
+                rectangleOffset = -1.0f;
             }
 
             // Vẽ đường di chuyển
-            DrawMovingLine(lineProgram);
+            DrawMovingRectangle(movingRectangleProgram);
 
             eglSwapBuffers(display, surface);
         }
@@ -133,29 +136,48 @@ void main() {
 }
 )";
 
-// Line shaders source code
-const char* lineVertexShaderSource = R"(
-    #version 310 es
-    layout(location = 0) in vec4 aPosition;
-    uniform float uOffset;
-    out vec2 vPosition;
-    void main() {
-        gl_Position = aPosition + vec4(uOffset, 0.0, 0.0, 0.0);
-        vPosition = gl_Position.xy;
-    }
+// Moving Rectangle shaders source code
+const char* movingRectangleVertexShaderSource = R"(
+#version 310 es
+precision mediump float;
+layout(location = 0) in vec3 aPosition;  // Đổi tên từ vPosition thành aPosition
+out vec2 vPos;  // Truyền giá trị vị trí cho fragment shader
+uniform float rectangleOffset;
+
+void main() {
+    vPos = aPosition.xy;  // Lấy giá trị vị trí x, y của đỉnh
+    gl_Position = vec4(aPosition.x + rectangleOffset - 1.0, aPosition.y, aPosition.z, 1.0);
+}
 )";
 
-const char* lineFragmentShaderSource = R"(
-    #version 310 es
-    precision mediump float;
-    in vec2 vPosition;
-    out vec4 fragColor;
-    void main() {
-        float brightness = 1.0 - (vPosition.x + 1.0) / 2.0;
-        brightness = pow(brightness, 2.0);  // Tăng cường độ sáng ở bên trái
-        fragColor = vec4(1.0, 1.0, 1.0, brightness);+
+
+
+const char* movingRectangleFragmentShaderSource = R"(
+#version 310 es
+precision mediump float;
+out vec4 fragColor;
+in vec2 vPos;  // Nhận giá trị vị trí từ vertex shader
+
+// Giới hạn vùng vẽ
+uniform float leftLimit;
+uniform float rightLimit;
+uniform float bottomLimit;
+uniform float topLimit;
+
+void main() {
+
+    float distanceFromCenter = abs(vPos.x);  // Tính khoảng cách từ tâm (vPos.x = 0)
+    float fadeFactor = 1.0 - distanceFromCenter;  // Giảm độ đậm dần khi đi xa tâm
+    fadeFactor = max(fadeFactor, 0.0);  // Đảm bảo giá trị không âm
+    fragColor = vec4(1.0, 1.0, 0.0, fadeFactor);  // Màu vàng với alpha dựa trên fadeFactor
+
+    // Kiểm tra nếu pixel nằm ngoài vùng được xác định
+    if (vPos.x < leftLimit || vPos.x > rightLimit || vPos.y < bottomLimit || vPos.y > topLimit) {
+        fadeFactor = 0.0;  // Bỏ qua pixel nếu nằm ngoài vùng giới hạn
     }
+}
 )";
+
 
 
 // Compile shader and check for errors
@@ -199,21 +221,22 @@ GLuint CreateShaderProgram() {
     return shaderProgram;
 }
 
-GLuint CreateLineShaderProgram() {
-    GLuint vertexShader = CompileShader(GL_VERTEX_SHADER, lineVertexShaderSource);
-    GLuint fragmentShader = CompileShader(GL_FRAGMENT_SHADER, lineFragmentShaderSource);
+GLuint CreateMovingRectangleShaderProgram() {
+    GLuint vertexShader = CompileShader(GL_VERTEX_SHADER, movingRectangleVertexShaderSource);
+    GLuint fragmentShader = CompileShader(GL_FRAGMENT_SHADER, movingRectangleFragmentShaderSource);
 
     GLuint shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
 
+    // Kiểm tra lỗi
     GLint success;
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
     if (!success) {
         char infoLog[512];
         glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
-        LOGE("Line shader program linking error: %s", infoLog);
+        LOGE("Moving Rectangle shader program linking error: %s", infoLog);
     }
 
     glDeleteShader(vertexShader);
@@ -222,28 +245,31 @@ GLuint CreateLineShaderProgram() {
     return shaderProgram;
 }
 
-
 // Vertices coordinates
-const GLfloat vertices[] =
-        { //     COORDINATES     /        COLORS      /   TexCoord  //
-                -0.5, -0.5f, 0.0f,     1.0f, 0.0f, 0.0f,   0.0f, 0.0f, // Lower left corner
-                -0.5,  0.5f, 0.0f,     0.0f, 1.0f, 0.0f,   0.0f, 1.0f, // Upper left corner
-                0.5,  0.5f, 0.0f,     0.0f, 0.0f, 1.0f,    1.0f, 1.0f, // Upper right corner
-                0.5, -0.5f, 0.0f,     1.0f, 1.0f, 1.0f,    1.0f, 0.0f  // Lower right corner
-        };
+const GLfloat vertices[] = {
+        // COORDINATES     /   TexCoord
+        -0.5, -0.5f, 0.0f,   0.0f, 0.0f,  // Lower left corner
+        -0.5,  0.5f, 0.0f,   0.0f, 1.0f,  // Upper left corner
+        0.5,  0.5f, 0.0f,    1.0f, 1.0f,  // Upper right corner
+        0.5, -0.5f, 0.0f,    1.0f, 0.0f   // Lower right corner
+};
 
 const GLuint indices[] = {
         0, 1, 2,
         0, 2, 3
 };
 
-GLfloat lineVertices[] = {
-        -1, 0,
-        1, 0
-
+const GLfloat movingRectangleVertices[] = {
+        -0.5f, -0.5f, 0.0f,   // Góc dưới trái
+        0.5f, -0.5f, 0.0f,    // Góc dưới phải
+        0.5f,  0.5f, 0.0f,    // Góc trên phải
+        -0.5f,  0.5f, 0.0f    // Góc trên trái
 };
 
-GLuint VBO, VAO, EBO;
+const GLuint movingRectangleIndices[] = {
+        0, 1, 2,
+        0, 2, 3
+};
 
 void SetupBuffers() {
     glGenVertexArrays(1, &VAO);
@@ -258,69 +284,94 @@ void SetupBuffers() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    // coord
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+    // Position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
     glEnableVertexAttribArray(0);
 
-
-    //Texture coordinate
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
+    // TexCoord attribute
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
 
-    // Setup VBO cho đường di chuyển
-    glGenBuffers(1, &vbo[1]);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(lineVertices), lineVertices, GL_STATIC_DRAW);
-}
+    glGenVertexArrays(1, &vao[1]);
+    glGenBuffers(1, &vbo[2]);
+    glGenBuffers(1, &ebo[1]);
 
-void DrawRectangle(GLuint shaderProgram) {
-//    glClear(GL_COLOR_BUFFER_BIT);
+    glBindVertexArray(vao[1]);
 
-    glUseProgram(shaderProgram);
-    glBindVertexArray(VAO);
-    //Bind texture
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textureID);
-    glUniform1i(glGetUniformLocation(shaderProgram, "textureSampler"), 0);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[2]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(movingRectangleVertices), movingRectangleVertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo[1]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(movingRectangleIndices), movingRectangleIndices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid*)0);
+    glEnableVertexAttribArray(0);
+
     glBindVertexArray(0);
 }
 
-void DrawMovingLine (GLuint lineProgram) {
-// Draw moving line
-glUseProgram(lineProgram);
-GLuint offsetLocation = glGetUniformLocation(lineProgram, "uOffset");
-glUniform1f(offsetLocation, lineOffset - 1.0f);
+void DrawRectangle(GLuint shaderProgram) {
+    glUseProgram(shaderProgram);
 
-glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
-glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
-glEnableVertexAttribArray(0);
-glDrawArrays(GL_LINES, 0, 2);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureID);
 
-glFinish();
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
 }
 
-void loadTextureFromFile(const char* picturesDir) {
-    LOGD("display=%d, surface=%d, context=%d", display, surface, context);
+void DrawMovingRectangle(GLuint movingRectangleProgram) {
+    // Sử dụng chương trình shader
+    glUseProgram(movingRectangleProgram);
+
+    // Truyền giá trị cho uniform rectangleOffset
+    GLuint offsetLocation = glGetUniformLocation(movingRectangleProgram, "rectangleOffset");
+
+
+    // Lấy vị trí của các biến uniform giới hạn vùng vẽ
+    GLint leftLimitLoc = glGetUniformLocation(movingRectangleProgram, "leftLimit");
+    GLint rightLimitLoc = glGetUniformLocation(movingRectangleProgram, "rightLimit");
+    GLint bottomLimitLoc = glGetUniformLocation(movingRectangleProgram, "bottomLimit");
+    GLint topLimitLoc = glGetUniformLocation(movingRectangleProgram, "topLimit");
+
+    // Thiết lập giá trị cho các uniform giới hạn vùng vẽ
+    glUniform1f(leftLimitLoc, -1.0f);
+    glUniform1f(rightLimitLoc, 1.0f);
+    glUniform1f(bottomLimitLoc, -1.0f);
+    glUniform1f(topLimitLoc, 1.0f);
+    glUniform1f(offsetLocation, rectangleOffset);
+
+    // Bật chế độ blending trước khi vẽ để đảm bảo hiệu ứng alpha hoạt động
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Vẽ hình chữ nhật di chuyển
+    glBindVertexArray(vao[1]);  // Sử dụng VAO đã lưu
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);  // Vẽ các phần tử
+    glBindVertexArray(0);  // Hủy liên kết VAO
+
+    // Tắt chế độ blending sau khi vẽ (nếu cần)
+    glDisable(GL_BLEND);
+}
+
+
+void loadTextureFromFile(const char* pictureDir) {
+    LOGD("Loading texture from: %s", pictureDir);
 
     // Tải hình ảnh bằng stb_image
     int width, height, nrChannels;
-    unsigned char* data = stbi_load(picturesDir, &width, &height, &nrChannels, 0);
+    unsigned char* data = stbi_load(pictureDir, &width, &height, &nrChannels, 0);
     if (data == nullptr) {
-        LOGE("Failed to load image: %s", "/storage/emulated/0/Download/1045-2.jpg");
-
+        LOGE("Failed to load image: %s", pictureDir);
         return;
-    } else {
-        LOGD("Load texture successfully, Width: %d, Height: %d, nrChannels: %x", width, height, nrChannels);
     }
 
     // Tạo texture OpenGL
-    GLuint tmpTextureID;
-    glGenTextures(1, &tmpTextureID);
-    glBindTexture(GL_TEXTURE_2D, tmpTextureID);
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
 
     // Cài đặt các thông số cho texture
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -328,21 +379,11 @@ void loadTextureFromFile(const char* picturesDir) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-
     // Tải dữ liệu hình ảnh vào texture
     GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
     glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-    // Giải phóng dữ liệu hình ảnh sau khi tải vào texture
+
+    // Giải phóng dữ liệu hình ảnh
     stbi_image_free(data);
     glBindTexture(GL_TEXTURE_2D, 0);
-
-    GLuint readFramebuffer = 0;
-    glGenFramebuffers(1, &readFramebuffer);
-
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tmpTextureID, 0);
-    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
-    textureID = tmpTextureID;
-
 }

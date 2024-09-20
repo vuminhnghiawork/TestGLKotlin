@@ -90,7 +90,7 @@ public class MainActivity extends AppCompatActivity {
                 new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.READ_MEDIA_IMAGES},
                 PERMISSION_REQUEST_CODE);
         // Quyền đã được cấp, bạn có thể truy cập vào bộ nhớ ngoài
-            accessExternalStorage();
+        accessExternalStorage();
     }
 
     @Override
