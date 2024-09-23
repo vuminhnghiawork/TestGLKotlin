@@ -142,11 +142,13 @@ const char* movingRectangleVertexShaderSource = R"(
 precision mediump float;
 layout(location = 0) in vec3 aPosition;  // Đổi tên từ vPosition thành aPosition
 out vec2 vPos;  // Truyền giá trị vị trí cho fragment shader
+out vec2 vPos1;
 uniform float rectangleOffset;
 
 void main() {
     gl_Position = vec4(aPosition.x + rectangleOffset, aPosition.y, aPosition.z, 1.0);
     vPos = aPosition.xy;  // Lấy giá trị vị trí x, y của đỉnh
+    vPos1 = gl_Position.xy;
 }
 )";
 
@@ -157,6 +159,7 @@ const char* movingRectangleFragmentShaderSource = R"(
 precision mediump float;
 out vec4 fragColor;
 in vec2 vPos;  // Nhận giá trị vị trí từ vertex shader
+in vec2 vPos1;
 
 // Giới hạn vùng vẽ
 uniform float leftLimit;
@@ -166,17 +169,19 @@ uniform float topLimit;
 
 void main() {
 
-    float distanceFromCenter = abs(vPos.x);  // Tính khoảng cách từ tâm (vPos.x = 0)
-    float fadeFactor = 1.0 - distanceFromCenter;  // Giảm độ đậm dần khi đi xa tâm
-    fadeFactor = max(fadeFactor, 0.0);  // Đảm bảo giá trị không âm
-    fragColor = vec4(1.0, 1.0, 0.0, fadeFactor);  // Màu vàng với alpha dựa trên fadeFactor
-
     // Kiểm tra nếu pixel nằm ngoài vùng được xác định
-    if (vPos.x < leftLimit || vPos.x > rightLimit || vPos.y < bottomLimit || vPos.y > topLimit) {
+    if (vPos1.x < leftLimit || vPos1.x > rightLimit || vPos1.y < bottomLimit || vPos1.y > topLimit) {
         discard;  // Bỏ qua pixel nếu nằm ngoài vùng giới hạn
+    }
+    else {
+        float distanceFromCenter = abs(vPos.x);  // Tính khoảng cách từ tâm (vPos.x = 0)
+        float fadeFactor = 1.0 - distanceFromCenter;  // Giảm độ đậm dần khi đi xa tâm
+        fadeFactor = max(fadeFactor, 0.0);  // Đảm bảo giá trị không âm
+        fragColor = vec4(1.0, 1.0, 0.0, fadeFactor);  // Màu vàng với alpha dựa trên fadeFactor
     }
 }
 )";
+
 
 
 // Compile shader and check for errors
