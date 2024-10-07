@@ -467,7 +467,6 @@ bool triggerUpdateSize = true;
 std::mutex mMutex;
 GLuint textureID = 0;
 GLuint VBO, VAO, EBO;
-GLuint CreateShaderProgram();
 void loadTextureFromFile(const char* pictureDir);
 void RenderCombinedRectangles(GLuint shaderProgram);
 float rectangleOffset = -2.0f;
@@ -486,88 +485,6 @@ Java_com_vinai_testglkotlin_MainActivity_deinitSurface(JNIEnv *env, jobject inst
     ANativeWindow_release(window);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface, jstring picturesDir) {
-    LOGI("Java_com_vinai_testglkotlin_MainActivity_initSurface");
-
-    // Get native window from the surface
-    window = ANativeWindow_fromSurface(env, j_surface);
-    running = true;
-
-    // Convert jstring to a C++ std::string to ensure it remains valid during the render thread execution
-    const char* pathCStr = env->GetStringUTFChars(picturesDir, nullptr);
-    std::string pathStr(pathCStr); // Copy the path into a std::string
-    env->ReleaseStringUTFChars(picturesDir, pathCStr); // Now it's safe to release the original jstring
-
-    // Start the render thread
-    renderThread = std::thread([pathStr] {
-        LOGI("Start render thread");
-
-        // Get EGL display
-        display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-        if (display == EGL_NO_DISPLAY) {
-            LOGE("Unable to get EGL display.");
-            return;
-        }
-
-        // Initialize EGL
-        if (!GLHelper_initGL(EGL_NO_CONTEXT, window, &context, &surface)) {
-            LOGE("GLHelper_initGL failed.");
-            return;
-        }
-
-        // Make the context current
-        if (!eglMakeCurrent(display, surface, surface, context)) {
-            LOGE("eglMakeCurrent failed.");
-            return;
-        }
-
-        // Get surface size
-        GLHelper_getSurfaceSize(surface, width, height);
-
-        // Initialize OpenGL settings
-        init_gl(width, height);
-
-        // Create shader program
-        shaderProgram = CreateShaderProgram();
-        if (shaderProgram == 0) {
-            LOGE("Failed to create shader program.");
-            return;
-        }
-
-        // Setup combined buffers
-        SetupCombinedBuffers();
-
-        // Load texture from file using the copied path
-        loadTextureFromFile(pathStr.c_str());
-
-        // Main render loop
-        while (running) {
-            // Clear buffers
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            // Render both rectangles
-            RenderCombinedRectangles(shaderProgram);
-
-            // Update the moving rectangle's position
-            rectangleOffset += 0.005f;
-            if (rectangleOffset > 2.0f) {
-                rectangleOffset = -2.0f;
-            }
-
-            // Swap EGL buffers
-            eglSwapBuffers(display, surface);
-        }
-
-        // Cleanup OpenGL resources
-        deinit_gl(width, height);
-        GLHelper_releaseSurface(surface);
-        GLHelper_releaseContext(context);
-    });
-}
-
-
-
 // Shader sources
 const char* combinedVertexShaderSource = R"(
 #version 310 es
@@ -578,6 +495,7 @@ layout(location = 2) in float vType; // 0 for static, 1 for moving rectangle
 
 out vec2 texCoord;
 out vec2 vPos;
+out vec2 vPos1;
 flat out float fragType;
 
 uniform float rectangleOffset;
@@ -589,7 +507,8 @@ void main() {
         gl_Position = vec4(vPosition, 1.0);
     }
     texCoord = vTexCoord;
-    vPos = vPosition.xy;
+    vPos = gl_Position.xy;
+    vPos1 = vPosition.xy;
     fragType = vType;
 }
 )";
@@ -599,6 +518,7 @@ const char* combinedFragmentShaderSource = R"(
 precision mediump float;
 in vec2 texCoord;
 in vec2 vPos;
+in vec2 vPos1;
 flat in float fragType;
 
 out vec4 fragColor;
@@ -611,11 +531,11 @@ uniform float topLimit;
 
 void main() {
     if (fragType == 1.0) {  // Moving rectangle
-        if (gl_FragCoord.x < leftLimit || gl_FragCoord.x > rightLimit ||
-            gl_FragCoord.y < bottomLimit || gl_FragCoord.y > topLimit) {
+        if (vPos.x < leftLimit || vPos.x > rightLimit ||
+            vPos.y < bottomLimit || vPos.y > topLimit) {
             discard;
         } else {
-            float distanceFromCenter = abs(vPos.x);
+            float distanceFromCenter = abs(vPos1.x);
             float fadeFactor = 1.0 - distanceFromCenter;
             fadeFactor = max(fadeFactor, 0.0);
             fragColor = vec4(1.0, 1.0, 0.0, fadeFactor);  // Yellow color with fade effect
@@ -786,6 +706,9 @@ void RenderCombinedRectangles(GLuint shaderProgram) {
     glUniform1f(bottomLimitLoc, -0.5f);
     glUniform1f(topLimitLoc, 0.5f);
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     // Bind texture unit 0 to textureSampler
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, textureID);
@@ -799,5 +722,85 @@ void RenderCombinedRectangles(GLuint shaderProgram) {
 
     // Unbind texture
     glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instance, jobject j_surface, jstring picturesDir) {
+    LOGI("Java_com_vinai_testglkotlin_MainActivity_initSurface");
+
+    // Get native window from the surface
+    window = ANativeWindow_fromSurface(env, j_surface);
+    running = true;
+
+    // Convert jstring to a C++ std::string to ensure it remains valid during the render thread execution
+    const char* pathCStr = env->GetStringUTFChars(picturesDir, nullptr);
+    std::string pathStr(pathCStr); // Copy the path into a std::string
+    env->ReleaseStringUTFChars(picturesDir, pathCStr); // Now it's safe to release the original jstring
+
+    // Start the render thread
+    renderThread = std::thread([pathStr] {
+        LOGI("Start render thread");
+
+        // Get EGL display
+        display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        if (display == EGL_NO_DISPLAY) {
+            LOGE("Unable to get EGL display.");
+            return;
+        }
+
+        // Initialize EGL
+        if (!GLHelper_initGL(EGL_NO_CONTEXT, window, &context, &surface)) {
+            LOGE("GLHelper_initGL failed.");
+            return;
+        }
+
+        // Make the context current
+        if (!eglMakeCurrent(display, surface, surface, context)) {
+            LOGE("eglMakeCurrent failed.");
+            return;
+        }
+
+        // Get surface size
+        GLHelper_getSurfaceSize(surface, width, height);
+
+        // Initialize OpenGL settings
+        init_gl(width, height);
+
+        // Create shader program
+        shaderProgram = CreateShaderProgram();
+        if (shaderProgram == 0) {
+            LOGE("Failed to create shader program.");
+            return;
+        }
+
+        // Setup combined buffers
+        SetupCombinedBuffers();
+
+        // Load texture from file using the copied path
+        loadTextureFromFile(pathStr.c_str());
+
+        // Main render loop
+        while (running) {
+            // Clear buffers
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // Render both rectangles
+            RenderCombinedRectangles(shaderProgram);
+
+            // Update the moving rectangle's position
+            rectangleOffset += 0.005f;
+            if (rectangleOffset > 2.0f) {
+                rectangleOffset = -2.0f;
+            }
+
+            // Swap EGL buffers
+            eglSwapBuffers(display, surface);
+        }
+
+        // Cleanup OpenGL resources
+        deinit_gl(width, height);
+        GLHelper_releaseSurface(surface);
+        GLHelper_releaseContext(context);
+    });
 }
 
