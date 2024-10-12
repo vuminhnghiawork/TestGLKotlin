@@ -37,9 +37,8 @@ std::mutex mMutex;
 GLuint textureID = 0;
 GLuint VBO, VAO, EBO;
 void loadTextureFromFile(const char* pictureDir);
-void RenderCombinedRectangles(GLuint shaderProgram);
-float rectangleOffset = -2.0f;
-void SetupCombinedBuffers();
+GLuint textureIDs[6]; // Array to hold texture IDs for each face
+
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_vinai_testglkotlin_MainActivity_surfaceResize(JNIEnv *env, jobject instance) {
@@ -58,10 +57,17 @@ Java_com_vinai_testglkotlin_MainActivity_deinitSurface(JNIEnv *env, jobject inst
 const char* vertexShaderSource = R"(
 #version 310 es
 precision mediump float;
-layout(location = 0) in vec3 aPos; // Vị trí đỉnh
+
+layout(location = 0) in vec3 aPos; // Vertex position
+layout(location = 1) in vec2 aTexCoord; // Texture coordinates
+
+uniform mat4 uMVPMatrix;
+
+out vec2 TexCoord; // Pass texture coordinates to fragment shader
 
 void main() {
-    gl_Position = vec4(aPos, 1.0); // Thiết lập vị trí
+    gl_Position = uMVPMatrix * vec4(aPos, 1.0);
+    TexCoord = aTexCoord; // Pass through the texture coordinates
 }
 )";
 
@@ -69,10 +75,13 @@ const char* fragmentShaderSource = R"(
 #version 310 es
 precision mediump float;
 
-out vec4 FragColor; // Màu đầu ra
+in vec2 TexCoord; // Interpolated texture coordinates
+out vec4 FragColor; // Output fragment color
+
+uniform sampler2D textureSampler; // The texture sampler
 
 void main() {
-    FragColor = vec4(0.5, 0.5, 0.5, 1.0); // Áp dụng màu xám (RGB: 0.5, 0.5, 0.5)
+    FragColor = texture(textureSampler, TexCoord); // Sample texture
 }
 )";
 
@@ -134,86 +143,152 @@ GLuint CreateShaderProgram() {
 }
 
 
-// Combined vertices for the rectangle (x, y, z)
+// vertices for the rectangular (x, y, z)
 const GLfloat vertices[] = {
-        // Mặt dưới
-        -0.5f, -0.5f, -0.5f,  // Góc dưới trái phía sau
-        0.5f, -0.5f, -0.5f,  // Góc dưới phải phía sau
-        0.5f, -0.5f,  0.5f,  // Góc dưới phải phía trước
-        -0.5f, -0.5f,  0.5f,  // Góc dưới trái phía trước
+        // Positions          // Texture Coords
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  // Bottom-left
+        0.5f, -0.5f, -0.5f,  1.0f, 0.0f,  // Bottom-right
+        0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  // Top-right
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,  // Top-left
 
-        // Mặt trên
-        -0.5f,  0.5f, -0.5f,  // Góc trên trái phía sau
-        0.5f,  0.5f, -0.5f,  // Góc trên phải phía sau
-        0.5f,  0.5f,  0.5f,  // Góc trên phải phía trước
-        -0.5f,  0.5f,  0.5f   // Góc trên trái phía trước
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  // Bottom-left
+        0.5f, -0.5f,  0.5f,  1.0f, 0.0f,  // Bottom-right
+        0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  // Top-right
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f   // Top-left
 };
 
-// Chỉ số cho hình hộp chữ nhật (12 tam giác)
 const GLuint indices[] = {
-        // Mặt dưới
+
+// Back face
         0, 1, 2,
-        0, 2, 3,
-        // Mặt trên
+        2, 3, 0,
+
+        // Front face
         4, 5, 6,
-        4, 6, 7,
-        // Mặt phía trước
-        3, 2, 6,
-        3, 6, 7,
-        // Mặt phía sau
-        0, 4, 5,
-        0, 5, 1,
-        // Mặt bên trái
-        0, 3, 7,
-        0, 7, 4,
-        // Mặt bên phải
+        6, 7, 4,
+
+        // Left face
+        0, 4, 7,
+        7, 3, 0,
+
+        // Right face
         1, 5, 6,
-        1, 6, 2
+        6, 2, 1,
+
+        // Bottom face
+        0, 1, 5,
+        5, 4, 0,
+
+        // Top face
+        3, 2, 6,
+        6, 7, 3
 };
 
 // Setup buffers for combined vertices and indices
-void SetupBuffers() {
+void SetupBuffers(GLuint &VAO, GLuint &VBO, GLuint &EBO) {
     glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
     glBindVertexArray(VAO);
 
-    // Bind VBO
-    glGenBuffers(1, &VBO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    // Bind EBO
-    glGenBuffers(1, &EBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
+    // Position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+
+    // Texture coordinate attribute
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    glBindVertexArray(0);
+    glBindVertexArray(0); // Unbind VAO
 }
 
-// Hàm render
-void Render() {
-    // Xóa bộ đệm màu và độ sâu
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Kích hoạt shader
+// Load texture from file
+void loadTextureFromFile(const char* pictureDir) {
+    LOGI("Loading texture from %s", pictureDir);
+    int imgWidth, imgHeight, nrChannels;
+    unsigned char* data = stbi_load(pictureDir, &imgWidth, &imgHeight, &nrChannels, 0);
+
+    if(data){
+        glGenTextures(1, &textureID);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+
+        // Set texture parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // or GL_REPEAT
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // or GL_REPEAT
+
+        GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
+        glTexImage2D(GL_TEXTURE_2D, 0, format, imgWidth, imgHeight, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        stbi_image_free(data);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        LOGI("Texture loaded successfully");
+    }
+    else{
+        LOGE("Failed to load texture from %s", pictureDir);
+    }
+}
+
+// Function to render the rectangular prism with rotation around the Y-axis
+void Render(GLuint shaderProgram, GLuint VAO, float angle, glm::vec3 lightPos, glm::vec3 viewPos) {
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // Use the shader program
     glUseProgram(shaderProgram);
 
-    // Liên kết VAO
+    // Create the projection matrix
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f); // Perspective projection
+
+    // Create the view matrix (camera)
+    glm::mat4 view = glm::lookAt(viewPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)); // Camera at viewPos, looking at origin
+
+    // Create the model matrix with rotation around the Y-axis
+    glm::mat4 model = glm::mat4(1.0f); // Initialize to identity matrix
+    model = glm::rotate(model, glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f)); // Rotate around Y-axis
+
+    // Combine the matrices into the MVP matrix
+    glm::mat4 mvp = projection * view * model; // Combine projection, view, and model matrices
+
+    // Send the MVP matrix to the shader
+    unsigned int mvpLocation = glGetUniformLocation(shaderProgram, "uMVPMatrix");
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(mvp));
+
+    // Send light position and camera position to the shader
+    unsigned int lightPosLoc = glGetUniformLocation(shaderProgram, "lightPos");
+    glUniform3fv(lightPosLoc, 1, glm::value_ptr(lightPos));
+
+    unsigned int viewPosLoc = glGetUniformLocation(shaderProgram, "viewPos");
+    glUniform3fv(viewPosLoc, 1, glm::value_ptr(viewPos));
+
+    // Send light color and object color to the shader
+    unsigned int lightColorLoc = glGetUniformLocation(shaderProgram, "lightColor");
+    glUniform3f(lightColorLoc, 1.0f, 1.0f, 1.0f); // White light
+
+    unsigned int objectColorLoc = glGetUniformLocation(shaderProgram, "objectColor");
+    glUniform3f(objectColorLoc, 0.5f, 0.5f, 0.5f); // Gray object color
+
+    // Bind texture unit 0 to textureSampler
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    GLint texLoc = glGetUniformLocation(shaderProgram, "textureSampler");
+    glUniform1i(texLoc, 0); // Texture unit 0
+
+    // Bind VAO and draw the rectangular prism
     glBindVertexArray(VAO);
-
-    // Bật độ sâu
-    glEnable(GL_DEPTH_TEST);
-
-    // Vẽ hình hộp chữ nhật
-    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0); // 36 = 6 mặt * 2 tam giác/mặt * 3 chỉ số/tam giác
-
-    // Liên kết lại VAO
-    glBindVertexArray(0);
+    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0); // Unbind VAO
 }
+
 
 
 extern "C" JNIEXPORT void JNICALL
@@ -224,8 +299,13 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
     window = ANativeWindow_fromSurface(env, j_surface);
     running = true;
 
+    // Convert jstring to a C++ std::string to ensure it remains valid during the render thread execution
+    const char* pathCStr = env->GetStringUTFChars(picturesDir, nullptr);
+    std::string pathStr(pathCStr); // Copy the path into a std::string
+    env->ReleaseStringUTFChars(picturesDir, pathCStr); // Now it's safe to release the original jstring
+
     // Start the render thread
-    renderThread = std::thread([] {
+    renderThread = std::thread([pathStr] {
         LOGI("Start render thread");
 
         // Get EGL display
@@ -260,17 +340,35 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
             return;
         }
 
-        // Thiết lập buffers
-        SetupBuffers();
+        // Enable depth testing
+        glEnable(GL_DEPTH_TEST);
+
+        float angle = 0.0f; // Initial rotation angle
+        glm::vec3 lightPos = glm::vec3(2.0f, 2.0f, 2.0f); // Position of the light source
+        glm::vec3 viewPos = glm::vec3(2.0f, 2.0f, 3.0f); // Camera position
+
+        // Setup buffers
+        SetupBuffers(VAO, VBO, EBO);
+
+        // Load textures for each face
+        GLuint textures[6];
+        textures[0] = loadTexture("path_to_texture1.jpg");  // Front face
+        textures[1] = loadTexture("path_to_texture2.jpg");  // Back face
+        // Load other textures for other faces...
+
+        // Load texture from file using the copied path
+        loadTextureFromFile(pathStr.c_str());
 
         // Main render loop
         while (running) {
             // Clear buffers
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            glClearColor(0,0,0,0);
+            glClearColor(1,1,1,1);
+            // Update the rotation angle faster
+            angle += 2.0f; // Increase the angle faster to rotate the object faster
 
-            // Render both rectangles
-            Render();
+            // Render
+            Render(shaderProgram, VAO, angle, lightPos, viewPos);
 
             // Swap EGL buffers
             eglSwapBuffers(display, surface);
