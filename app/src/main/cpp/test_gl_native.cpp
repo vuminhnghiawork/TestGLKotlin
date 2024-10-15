@@ -58,32 +58,74 @@ const char* vertexShaderSource = R"(
 #version 310 es
 precision mediump float;
 
-layout(location = 0) in vec3 aPos; // Vertex position
-layout(location = 1) in vec2 aTexCoord; // Texture coordinates
+layout(location = 0) in vec3 aPos;       // Vertex position
+layout(location = 1) in vec2 aTexCoord;  // Texture coordinates
+layout(location = 2) in vec3 aNormal;    // Vertex normal
 
-uniform mat4 uMVPMatrix;
+uniform mat4 projection;  // Projection matrix
+uniform mat4 view;        // View (camera) matrix
+uniform mat4 model;       // Model matrix for transforming normals
 
-out vec2 TexCoord; // Pass texture coordinates to fragment shader
+out vec2 TexCoord;        // Pass texture coordinates to fragment shader
+out vec3 FragPos;         // Fragment position in world space
+out vec3 Normal;          // Normal vector in world space
 
 void main() {
-    gl_Position = uMVPMatrix * vec4(aPos, 1.0);
-    TexCoord = aTexCoord; // Pass through the texture coordinates
+    // Combine projection, view, and model to get final position
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+
+    // Pass texture coordinates
+    TexCoord = aTexCoord;
+
+    // Transform normal into world space using the model matrix
+    Normal = (model * vec4(aNormal, 1.0)).xyz;
+
+    // Pass the fragment position (in world space)
+    FragPos = vec3(model * vec4(aPos, 1.0));
 }
 )";
+
 
 const char* fragmentShaderSource = R"(
 #version 310 es
 precision mediump float;
 
-in vec2 TexCoord; // Interpolated texture coordinates
-out vec4 FragColor; // Output fragment color
+in vec2 TexCoord;        // Interpolated texture coordinates
+in vec3 FragPos;         // Fragment position in world space
+in vec3 Normal;          // Interpolated normal vector
 
-uniform sampler2D textureSampler; // The texture sampler
+out vec4 FragColor;      // Output fragment color
+
+// Uniforms for lighting
+uniform vec3 lightPos;   // Light position in world space
+uniform vec3 lightColor; // Light color
+uniform vec3 objectColor;// Object color
+
+// Texture sampler
+uniform sampler2D textureSampler;
 
 void main() {
-    FragColor = texture(textureSampler, TexCoord); // Sample texture
+    // Normalize the normal vector
+    vec3 norm = normalize(Normal);
+
+    // Calculate light direction (from fragment to light)
+    vec3 lightDir = normalize(lightPos - FragPos);
+
+    // Calculate the diffuse intensity (Lambertian reflection)
+    float diff = max(dot(norm, lightDir), 0.0);
+
+    // Apply the diffuse lighting to the object color
+    vec3 diffuse = diff * lightColor;
+
+    // Sample the texture color
+    vec4 texColor = texture(textureSampler, TexCoord);
+
+    // Output final fragment color, combining diffuse lighting and texture color
+    FragColor = vec4(diffuse, 1.0) * texColor;
 }
 )";
+
+
 
 // Compile shader and check for errors
 GLuint CompileShader(GLenum type, const char* source) {
@@ -145,43 +187,68 @@ GLuint CreateShaderProgram() {
 
 // vertices for the rectangular (x, y, z)
 const GLfloat vertices[] = {
-        // Positions          // Texture Coords
-        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  // Bottom-left
-        0.5f, -0.5f, -0.5f,  1.0f, 0.0f,  // Bottom-right
-        0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  // Top-right
-        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,  // Top-left
+// Positions          // Texture Coords // Normals
+        // Front face
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  0.0f,  0.0f,  1.0f,
+        0.5f, -0.5f,  0.5f,  1.0f, 0.0f,  0.0f,  0.0f,  1.0f,
+        0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  0.0f,  0.0f,  1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,  0.0f,  0.0f,  1.0f,
 
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  // Bottom-left
-        0.5f, -0.5f,  0.5f,  1.0f, 0.0f,  // Bottom-right
-        0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  // Top-right
-        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f   // Top-left
+        // Back face
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f,  0.0f, -1.0f,
+        0.5f, -0.5f, -0.5f,  1.0f, 0.0f,  0.0f,  0.0f, -1.0f,
+        0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  0.0f,  0.0f, -1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,  0.0f,  0.0f, -1.0f,
+
+        // Left face
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, -1.0f,  0.0f,  0.0f,
+        -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, -1.0f,  0.0f,  0.0f,
+        -0.5f,  0.5f,  0.5f,  1.0f, 1.0f, -1.0f,  0.0f,  0.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, -1.0f,  0.0f,  0.0f,
+
+        // Right face
+        0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  1.0f,  0.0f,  0.0f,
+        0.5f, -0.5f,  0.5f,  1.0f, 0.0f,  1.0f,  0.0f,  0.0f,
+        0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  1.0f,  0.0f,  0.0f,
+        0.5f,  0.5f, -0.5f,  0.0f, 1.0f,  1.0f,  0.0f,  0.0f,
+
+        // Bottom face
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f, 1.0f,  0.0f,
+        0.5f, -0.5f, -0.5f,  1.0f, 0.0f,  0.0f, 1.0f,  0.0f,
+        0.5f, -0.5f,  0.5f,  1.0f, 1.0f,  0.0f, 1.0f,  0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 1.0f,  0.0f, 1.0f,  0.0f,
+
+        // Top face
+        -0.5f,  0.5f, -0.5f,  0.0f, 0.0f,  0.0f,  1.0f,  0.0f,
+        0.5f,  0.5f, -0.5f,  1.0f, 0.0f,  0.0f,  1.0f,  0.0f,
+        0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  0.0f,  1.0f,  0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,  0.0f,  1.0f,  0.0f,
 };
 
 const GLuint indices[] = {
-
-// Back face
+        // Front face
         0, 1, 2,
         2, 3, 0,
 
-        // Front face
+        // Back face
         4, 5, 6,
         6, 7, 4,
 
         // Left face
-        0, 4, 7,
-        7, 3, 0,
+        8, 9, 10,
+        10, 11, 8,
 
         // Right face
-        1, 5, 6,
-        6, 2, 1,
+        12, 13, 14,
+        14, 15, 12,
 
         // Bottom face
-        0, 1, 5,
-        5, 4, 0,
+        16, 17, 18,
+        18, 19, 16,
 
         // Top face
-        3, 2, 6,
-        6, 7, 3
+        20, 21, 22,
+        22, 23, 20,
 };
 
 // Setup buffers for combined vertices and indices
@@ -198,13 +265,17 @@ void SetupBuffers(GLuint &VAO, GLuint &VBO, GLuint &EBO) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    // Position attribute
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+// Position attribute (location = 0)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // Texture coordinate attribute
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+// Texture coordinate attribute (location = 1)
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
+
+// Normal attribute (location = 2)
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
+    glEnableVertexAttribArray(2);
 
     glBindVertexArray(0); // Unbind VAO
 }
@@ -240,53 +311,52 @@ void loadTextureFromFile(const char* pictureDir) {
 }
 
 // Function to render the rectangular prism with rotation around the Y-axis
-void Render(GLuint shaderProgram, GLuint VAO, float angle, glm::vec3 lightPos, glm::vec3 viewPos) {
+void Render(GLuint shaderProgram, GLuint VAO, GLuint textureID, float angle, glm::vec3 lightPos, glm::vec3 viewPos) {
 
+    // Clear the color and depth buffers
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     // Use the shader program
     glUseProgram(shaderProgram);
 
-    // Create the projection matrix
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f); // Perspective projection
+    // Create the projection matrix (Perspective projection)
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
 
-    // Create the view matrix (camera)
-    glm::mat4 view = glm::lookAt(viewPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)); // Camera at viewPos, looking at origin
+    // Create the view matrix (camera view)
+    glm::mat4 view = glm::lookAt(viewPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Create the model matrix with rotation around the Y-axis
-    glm::mat4 model = glm::mat4(1.0f); // Initialize to identity matrix
-    model = glm::rotate(model, glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f)); // Rotate around Y-axis
+    glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    // Combine the matrices into the MVP matrix
-    glm::mat4 mvp = projection * view * model; // Combine projection, view, and model matrices
+    // Send the individual projection, view, and model matrices to the shader
+    GLint projLocation = glGetUniformLocation(shaderProgram, "projection");
+    glUniformMatrix4fv(projLocation, 1, GL_FALSE, glm::value_ptr(projection));
 
-    // Send the MVP matrix to the shader
-    unsigned int mvpLocation = glGetUniformLocation(shaderProgram, "uMVPMatrix");
-    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(mvp));
+    GLint viewLocation = glGetUniformLocation(shaderProgram, "view");
+    glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
 
-    // Send light position and camera position to the shader
-    unsigned int lightPosLoc = glGetUniformLocation(shaderProgram, "lightPos");
-    glUniform3fv(lightPosLoc, 1, glm::value_ptr(lightPos));
+    GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
+    glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
 
-    unsigned int viewPosLoc = glGetUniformLocation(shaderProgram, "viewPos");
-    glUniform3fv(viewPosLoc, 1, glm::value_ptr(viewPos));
+    // Send light position and camera (view) position to the shader
+    glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
+    glUniform3fv(glGetUniformLocation(shaderProgram, "viewPos"), 1, glm::value_ptr(viewPos));
 
-    // Send light color and object color to the shader
-    unsigned int lightColorLoc = glGetUniformLocation(shaderProgram, "lightColor");
-    glUniform3f(lightColorLoc, 1.0f, 1.0f, 1.0f); // White light
+    // Set the light color (white) and object color (gray)
+    glUniform3f(glGetUniformLocation(shaderProgram, "lightColor"), 1.0f, 1.0f, 1.0f);
+    glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.5f, 0.5f, 0.5f);
 
-    unsigned int objectColorLoc = glGetUniformLocation(shaderProgram, "objectColor");
-    glUniform3f(objectColorLoc, 0.5f, 0.5f, 0.5f); // Gray object color
-
-    // Bind texture unit 0 to textureSampler
+    // Bind texture unit 0 to the texture sampler and send it to the shader
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, textureID);
-    GLint texLoc = glGetUniformLocation(shaderProgram, "textureSampler");
-    glUniform1i(texLoc, 0); // Texture unit 0
+    glUniform1i(glGetUniformLocation(shaderProgram, "textureSampler"), 0); // Texture unit 0
 
-    // Bind VAO and draw the rectangular prism
+    // Bind the VAO and draw the object (assuming indexed drawing with glDrawElements)
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0); // Unbind VAO
+
+    // Unbind VAO after drawing
+    glBindVertexArray(0);
 }
 
 
@@ -345,16 +415,10 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
 
         float angle = 0.0f; // Initial rotation angle
         glm::vec3 lightPos = glm::vec3(2.0f, 2.0f, 2.0f); // Position of the light source
-        glm::vec3 viewPos = glm::vec3(2.0f, 2.0f, 3.0f); // Camera position
+        glm::vec3 viewPos = glm::vec3(2.0f, 2.0f, 2.0f); // Camera position
 
         // Setup buffers
         SetupBuffers(VAO, VBO, EBO);
-
-        // Load textures for each face
-        GLuint textures[6];
-        textures[0] = loadTexture("path_to_texture1.jpg");  // Front face
-        textures[1] = loadTexture("path_to_texture2.jpg");  // Back face
-        // Load other textures for other faces...
 
         // Load texture from file using the copied path
         loadTextureFromFile(pathStr.c_str());
@@ -363,12 +427,12 @@ Java_com_vinai_testglkotlin_MainActivity_initSurface(JNIEnv *env, jobject instan
         while (running) {
             // Clear buffers
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            glClearColor(1,1,1,1);
+            glClearColor(0,1,1,0);
             // Update the rotation angle faster
             angle += 2.0f; // Increase the angle faster to rotate the object faster
 
             // Render
-            Render(shaderProgram, VAO, angle, lightPos, viewPos);
+            Render(shaderProgram, VAO, textureID, angle, lightPos, viewPos);
 
             // Swap EGL buffers
             eglSwapBuffers(display, surface);
